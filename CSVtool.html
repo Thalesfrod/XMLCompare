@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparador de Estrutura XML</title>
+    <!-- Incluindo Tailwind CSS para uma estilização moderna -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilo para um scrollbar mais sutil nos textareas */
+        textarea::-webkit-scrollbar, pre::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track, pre::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb, pre::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover, pre::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .result-highlight {
+            background-color: #fffbeb;
+            border-left: 4px solid #facc15;
+            padding: 1rem;
+            margin-top: 1rem;
+            border-radius: 0.25rem;
+        }
+        .drag-over {
+            border-style: dashed !important;
+            border-color: #4f46e5 !important; /* Cor indigo-600 do Tailwind */
+            background-color: #f0f3ff;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased text-gray-800">
+
+    <div class="container mx-auto p-4 sm:p-6 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-bold text-gray-700">Comparador de Estrutura XML</h1>
+            <p class="text-md text-gray-500 mt-2">Cole seus dois XMLs abaixo para comparar suas estruturas de nós e atributos.</p>
+        </header>
+
+        <main class="bg-white p-6 rounded-xl shadow-lg">
+            <!-- Área de input para os XMLs -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="xmlInput1" class="block text-lg font-medium text-gray-700 mb-2">XML 1</label>
+                    <textarea id="xmlInput1" rows="15"
+                        class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out font-mono text-sm"
+                        placeholder="Cole o primeiro XML aqui ou arraste e solte um arquivo..."></textarea>
+                    
+                    <label for="xmlStructure1" class="block text-lg font-medium text-gray-700 mb-2 mt-4">Estrutura Base</label>
+                    <pre id="xmlStructure1" class="w-full p-3 border border-gray-200 bg-gray-50 rounded-lg shadow-sm font-mono text-sm h-48 overflow-auto text-gray-600"></pre>
+                </div>
+                <div>
+                    <label for="xmlInput2" class="block text-lg font-medium text-gray-700 mb-2">XML 2</label>
+                    <textarea id="xmlInput2" rows="15"
+                        class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out font-mono text-sm"
+                        placeholder="Cole o segundo XML aqui ou arraste e solte um arquivo..."></textarea>
+
+                    <label for="xmlStructure2" class="block text-lg font-medium text-gray-700 mb-2 mt-4">Estrutura Base</label>
+                    <pre id="xmlStructure2" class="w-full p-3 border border-gray-200 bg-gray-50 rounded-lg shadow-sm font-mono text-sm h-48 overflow-auto text-gray-600"></pre>
+                </div>
+            </div>
+
+            <!-- Botão de Ação -->
+            <div class="mt-6 text-center">
+                <button id="compareBtn"
+                    class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-300 transition-transform transform hover:scale-105 duration-200 ease-in-out shadow-md">
+                    Comparar Estruturas
+                </button>
+            </div>
+
+            <!-- Área de Resultados -->
+            <div id="resultArea" class="mt-8">
+                <!-- Os resultados da comparação serão exibidos aqui -->
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('compareBtn').addEventListener('click', () => {
+            const xmlString1 = document.getElementById('xmlInput1').value.trim();
+            const xmlString2 = document.getElementById('xmlInput2').value.trim();
+            const resultArea = document.getElementById('resultArea');
+
+            resultArea.innerHTML = ''; // Limpa resultados anteriores
+
+            if (!xmlString1 || !xmlString2) {
+                displayMessage('Por favor, insira o conteúdo nos dois campos de XML.', 'error');
+                return;
+            }
+
+            const parser = new DOMParser();
+            
+            const xmlDoc1 = parser.parseFromString(xmlString1, "application/xml");
+            const xmlDoc2 = parser.parseFromString(xmlString2, "application/xml");
+
+            if (xmlDoc1.getElementsByTagName("parsererror").length > 0 || xmlDoc2.getElementsByTagName("parsererror").length > 0) {
+                let errorMessage = "Erro de análise de XML encontrado.<br/>";
+                if(xmlDoc1.getElementsByTagName("parsererror").length > 0) errorMessage += "<strong>XML 1:</strong> " + xmlDoc1.getElementsByTagName("parsererror")[0].innerText + "<br/>";
+                if(xmlDoc2.getElementsByTagName("parsererror").length > 0) errorMessage += "<strong>XML 2:</strong> " + xmlDoc2.getElementsByTagName("parsererror")[0].innerText;
+                displayMessage(errorMessage, 'error');
+                return;
+            }
+
+            const differences = [];
+            compareNodes(xmlDoc1.documentElement, xmlDoc2.documentElement, [xmlDoc1.documentElement.nodeName], differences);
+
+            if (differences.length === 0) {
+                displayMessage('As estruturas XML são idênticas!', 'success');
+            } else {
+                displayDifferences(differences);
+            }
+        });
+
+        function compareNodes(node1, node2, path, differences) {
+            const currentPath = path.join(' > ');
+
+            if (node1.nodeName !== node2.nodeName) {
+                differences.push(`Diferença de nome de tag em '${path.slice(0, -1).join(' > ')}': <strong>${node1.nodeName}</strong> vs <strong>${node2.nodeName}</strong>`);
+                return;
+            }
+
+            compareAttributes(node1, node2, currentPath, differences);
+
+            const children1 = Array.from(node1.children);
+            const children2 = Array.from(node2.children);
+
+            if (children1.length !== children2.length) {
+                differences.push(`Diferença na contagem de filhos em '${currentPath}': <strong>${children1.length}</strong> vs <strong>${children2.length}</strong>`);
+            }
+
+            const len = Math.min(children1.length, children2.length);
+            for (let i = 0; i < len; i++) {
+                compareNodes(children1[i], children2[i], [...path, children1[i].nodeName], differences);
+            }
+        }
+
+        function compareAttributes(node1, node2, path, differences) {
+            const attrs1 = new Map(Array.from(node1.attributes).map(attr => [attr.name, attr.value]));
+            const attrs2 = new Map(Array.from(node2.attributes).map(attr => [attr.name, attr.value]));
+
+            if (attrs1.size !== attrs2.size) {
+                 differences.push(`Diferença na contagem de atributos em '${path}': <strong>${attrs1.size}</strong> vs <strong>${attrs2.size}</strong>`);
+            }
+            
+            for (const [name, value] of attrs1) {
+                if (!attrs2.has(name)) {
+                    differences.push(`Atributo '<strong>${name}</strong>' ausente no XML 2 em '${path}'.`);
+                }
+            }
+            
+            for (const [name, value] of attrs2) {
+                if (!attrs1.has(name)) {
+                    differences.push(`Atributo '<strong>${name}</strong>' ausente no XML 1 em '${path}'.`);
+                }
+            }
+        }
+        
+        function displayMessage(message, type = 'info') {
+            const colorClasses = {
+                success: 'bg-green-100 border-green-500 text-green-800',
+                error: 'bg-red-100 border-red-500 text-red-800',
+                info: 'bg-blue-100 border-blue-500 text-blue-800',
+            };
+            const resultArea = document.getElementById('resultArea');
+            resultArea.innerHTML = `<div class="${colorClasses[type]} border-l-4 p-4 rounded" role="alert"><p>${message}</p></div>`;
+        }
+        
+        function displayDifferences(differences) {
+            const resultArea = document.getElementById('resultArea');
+            let html = `
+                <div class="result-highlight">
+                    <h3 class="text-xl font-semibold text-yellow-800 mb-3">Diferenças Estruturais Encontradas:</h3>
+                    <ul class="list-disc list-inside space-y-2 text-gray-700">`;
+            
+            differences.forEach(diff => {
+                html += `<li>${diff}</li>`;
+            });
+
+            html += `</ul></div>`;
+            resultArea.innerHTML = html;
+        }
+        
+        /**
+         * Gera uma string representando a estrutura única de um elemento XML.
+         * @param {Element} element - O elemento raiz para começar.
+         * @returns {string} - A string formatada da estrutura.
+         */
+        function generateStructureString(element) {
+            function buildStructure(el, indent) {
+                if (!el) return '';
+                
+                const attributes = Array.from(el.attributes)
+                                       .map(attr => ` ${attr.name}="..."`)
+                                       .join('');
+
+                let structure = `${indent}<${el.nodeName}${attributes}>\n`;
+
+                const uniqueChildren = new Map();
+                Array.from(el.children).forEach(child => {
+                    if (!uniqueChildren.has(child.nodeName)) {
+                        uniqueChildren.set(child.nodeName, child);
+                    }
+                });
+
+                for (const child of uniqueChildren.values()) {
+                    structure += buildStructure(child, indent + '  ');
+                }
+                
+                structure += `${indent}</${el.nodeName}>\n`;
+                return structure;
+            }
+            return buildStructure(element, '');
+        }
+        
+        /**
+         * Lida com a mudança de input do XML para atualizar a visualização da estrutura.
+         * @param {HTMLTextAreaElement} sourceTextArea - A área de texto de origem.
+         * @param {HTMLPreElement} targetPre - O elemento <pre> de destino.
+         */
+        function handleXmlInputChange(sourceTextArea, targetPre) {
+            const xmlString = sourceTextArea.value.trim();
+            if (!xmlString) {
+                targetPre.textContent = '';
+                return;
+            }
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "application/xml");
+
+            if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+                targetPre.textContent = 'XML inválido.';
+                targetPre.classList.add('text-red-500');
+            } else {
+                const structure = generateStructureString(xmlDoc.documentElement);
+                targetPre.textContent = structure;
+                targetPre.classList.remove('text-red-500');
+            }
+        }
+
+        function setupDragDrop(textAreaElement, structureElement) {
+            textAreaElement.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                textAreaElement.classList.add('drag-over');
+            });
+
+            textAreaElement.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                textAreaElement.classList.remove('drag-over');
+            });
+
+            textAreaElement.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                textAreaElement.classList.remove('drag-over');
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    const reader = new FileReader();
+                    reader.onload = (readEvent) => {
+                        textAreaElement.value = readEvent.target.result;
+                        // Aciona a atualização da estrutura após soltar o arquivo
+                        handleXmlInputChange(textAreaElement, structureElement);
+                    };
+                    reader.readAsText(file);
+                }
+            });
+        }
+
+        // --- INICIALIZAÇÃO ---
+        const xmlInput1 = document.getElementById('xmlInput1');
+        const xmlInput2 = document.getElementById('xmlInput2');
+        const xmlStructure1 = document.getElementById('xmlStructure1');
+        const xmlStructure2 = document.getElementById('xmlStructure2');
+
+        xmlInput1.addEventListener('input', () => handleXmlInputChange(xmlInput1, xmlStructure1));
+        xmlInput2.addEventListener('input', () => handleXmlInputChange(xmlInput2, xmlStructure2));
+
+        setupDragDrop(xmlInput1, xmlStructure1);
+        setupDragDrop(xmlInput2, xmlStructure2);
+    </script>
+</body>
+</html>
+
